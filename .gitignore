@@ -1,0 +1,5 @@
+# Binaries
+bin/*
+# Goland
+.idea/*
+*.frag
