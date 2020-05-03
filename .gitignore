@@ -1,5 +1,7 @@
 # Binaries
 bin/*
+# Misc. tools
+*.exe
 # Goland
 .idea/*
 # Ignore any junk shaders in project root directory
