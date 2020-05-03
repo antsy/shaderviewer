@@ -141,9 +141,9 @@ OPTION(s):
 		flag.PrintDefaults()
 	}
 
-	WindowTitle = fmt.Sprintf("%s - ShaderViewer", FragmentShaderFile)
-
 	flag.Parse()
+
+	WindowTitle = fmt.Sprintf("%s - ShaderViewer", FragmentShaderFile)
 
 	if listMonitors {
 		listSystemMonitors()
