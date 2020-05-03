@@ -1,5 +1,7 @@
 # Shader Viewer
 
+![](example.png)
+
 This software compiles OpenGL fragment shader and displays it in a window. Program will recompile the shader automatically whenever shared source file changes. ⚙
 
 There are probably dozens of better tools for doing the same things as this one does and more. I built this for myself as a starting point for experimenting with ray marching visualizations. 🔮
