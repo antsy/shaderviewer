@@ -14,8 +14,9 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
-	)
+)
 
 var (
 	// Versioning
@@ -28,6 +29,8 @@ var (
 	Width              int    // Can change if window resizes
 	Height             int    // Can change if window resizes
 	FragmentShaderFile string // Path to the shader file
+	UseFullScreen      bool
+	MonitorIndex       int
 
 	// Used by uniforms
 	BeginTime       time.Time
@@ -66,6 +69,8 @@ func main() {
 	// TODO: close window if program terminates
 
 	initOpenGL()
+
+	// First time compile shader
 	program := compileProgram(getVertexShader(), fragmentShaderSource)
 
 	vertexObjectArray := constructVertexObjectArray()
@@ -97,6 +102,14 @@ func initHelpAndGlobals() {
 	var generateTemplate bool
 	flag.BoolVar(&generateTemplate, "generate", false,
 		"Instead of running, generate empty template fragment shader file")
+	flag.BoolVar(&UseFullScreen, "f11", false,
+		`Use full screen mode instead of window. Uses system primary monitor.
+Uses monitor's own resolution if the 'x' and 'y' -parameters are not specified.`)
+	flag.IntVar(&MonitorIndex, "m", -1,
+		"Instead of system primary monitor, try to use monitor by index value [0...N].")
+	var listMonitors bool
+	flag.BoolVar(&listMonitors, "monitors", false,
+		"Instead of running, display list of monitors available")
 
 	currentExecutableName := filepath.Base(os.Args[0])
 	helpText := fmt.Sprintf(`Usage: %s [OPTION]...
@@ -132,6 +145,11 @@ OPTION(s):
 
 	flag.Parse()
 
+	if listMonitors {
+		listSystemMonitors()
+		os.Exit(0)
+	}
+
 	if generateTemplate {
 		generateTemplateFile()
 		os.Exit(0) // Get out!
@@ -164,7 +182,7 @@ func draw(vertexObjectArray uint32, window *glfw.Window, program uint32) {
 	gl.Uniform1f(timestampUniform, float32(RenderTime.UnixNano()/int64(time.Millisecond)))
 
 	timeUniform := gl.GetUniformLocation(program, gl.Str("fTime"+NullTerminator))
-	gl.Uniform1f(timeUniform, float32((RenderTime.UnixNano() - BeginTime.UnixNano())/int64(time.Millisecond)))
+	gl.Uniform1f(timeUniform, float32((RenderTime.UnixNano()-BeginTime.UnixNano())/int64(time.Millisecond)))
 
 	dateUniform := gl.GetUniformLocation(program, gl.Str("iDate"+NullTerminator))
 	timeInSeconds := int32(RenderTime.Hour()*int(time.Hour) + RenderTime.Minute()*int(time.Minute) + RenderTime.Second())
@@ -262,7 +280,10 @@ func initGlfw() *glfw.Window {
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 
 	logResolution()
-	var monitor *glfw.Monitor // TODO: full screen mode
+	var monitor *glfw.Monitor
+	if UseFullScreen {
+		monitor = getMonitor()
+	}
 	window, err := glfw.CreateWindow(Width, Height, WindowTitle, monitor, nil)
 	if err != nil {
 		log.Println("Unable to initialize window for GLFW.")
@@ -271,6 +292,82 @@ func initGlfw() *glfw.Window {
 	window.MakeContextCurrent()
 
 	return window
+}
+
+/**
+ * Briefly initialise GLFW and list monitor(s) available in the system.
+ */
+func listSystemMonitors() {
+	if err := glfw.Init(); err != nil {
+		log.Println("Unable to initialize GLFW.")
+		panic(err)
+	}
+
+	monitors := glfw.GetMonitors()
+	tw := tabwriter.NewWriter(os.Stdout, 6, 0, 2, ' ', tabwriter.TabIndent)
+	fmt.Fprintln(tw, "Index\tName\tResolution\tRefresh rate\tWidth\tHeight")
+	for index, monitor := range monitors {
+		//monitor.GetWin32Monitor()
+		//monitor.GetWin32Adapter()
+		videoMode := monitor.GetVideoMode()
+		physicalWidth, physicalHeight := monitor.GetPhysicalSize()
+		fmt.Fprintln(tw, fmt.Sprintf(
+			"[%d]\t%s\t%dx%d\t%dHz\t%dmm\t%dmm",
+			index,
+			monitor.GetName(),
+			videoMode.Width,
+			videoMode.Height,
+			videoMode.RefreshRate,
+			physicalWidth,
+			physicalHeight))
+	}
+	tw.Flush()
+}
+
+/**
+ * Determine correct monitor settings to use for full screen mode.
+ */
+func getMonitor() *glfw.Monitor {
+	monitor := glfw.GetPrimaryMonitor()
+	if MonitorIndex > -1 {
+		monitors := glfw.GetMonitors()
+		if !(len(monitors) < MonitorIndex+1) {
+			monitor = monitors[MonitorIndex]
+		} else {
+			log.Println(fmt.Sprintf(
+				"System has only %d monitors, monitor index %d is out of range, falling back to default monitor.",
+				len(monitors),
+				MonitorIndex),
+			)
+		}
+	}
+
+	log.Println(fmt.Sprintf(`Using monitor "%s""`, monitor.GetName()))
+	videoMode := monitor.GetVideoMode()
+	monitorWidth := videoMode.Width
+	monitorHeight := videoMode.Height
+	if !(isFlagPassed("x") && isFlagPassed("y")) {
+		log.Println(fmt.Sprintf("Switching to monitor's native resolution (%dx%d)", monitorWidth, monitorHeight))
+		Width = monitorWidth
+		Height = monitorHeight
+	}
+
+	logResolution()
+
+	return monitor
+}
+
+/**
+ * Check if flag was passed as a parameter by user.
+ */
+func isFlagPassed(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 /**
