@@ -2,4 +2,5 @@
 bin/*
 # Goland
 .idea/*
-*.frag
+# Ignore any junk shaders in project root directory
+/*.frag

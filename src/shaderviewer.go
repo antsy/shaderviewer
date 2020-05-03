@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
-)
+	)
 
 var (
 	// Versioning
@@ -91,7 +91,7 @@ func initHelpAndGlobals() {
 	flag.StringVar(&FragmentShaderFile, "f", "default.frag",
 		"Source file for fragment shader")
 	flag.BoolVar(&ResetOnChange, "r", false,
-		"Reset the timer (iStep and fBeginning) values whenever shader is recompiled")
+		"Reset the timer (iStep and fTime) values whenever shader is recompiled")
 	flag.IntVar(&WaitTime, "w", 0,
 		"Apply X milliseconds of sleeping time between each rendering")
 	var generateTemplate bool
@@ -112,10 +112,10 @@ It simply fills the entire screen with a single polygon, which then can be used 
   Uniforms available for the shader
     int	   iStep        Running render frame count
     vec3   iResolution  Window pixel resolution (width and height)
-    float  fTime        Current UNIX time in milliseconds
-    float  fTimeDelta   Time passed in milliseconds since last frame was rendered
-    float  fBeginning   Timestamp since the beginning of current execution
+    float  fTime        Current running time in milliseconds
                         Note that this is affected by -r flag
+    float  fTimeDelta   Time passed in milliseconds since last frame was rendered
+    float  fTimestamp   Current UNIX timestamp in milliseconds
     vec4   iDate        Year, month, day as values and time of day in total seconds
     vec4   iMouse       Mouse pixel coordinates x and y, first and second mouse button states
                         1 if mouse button is pressed, 0 if lifted
@@ -160,11 +160,11 @@ func draw(vertexObjectArray uint32, window *glfw.Window, program uint32) {
 	deltaTimeUniform := gl.GetUniformLocation(program, gl.Str("fTimeDelta"+NullTerminator))
 	gl.Uniform1f(deltaTimeUniform, deltaTime)
 
-	beginTimeUniform := gl.GetUniformLocation(program, gl.Str("fBeginning"+NullTerminator))
-	gl.Uniform1f(beginTimeUniform, float32(BeginTime.UnixNano()/int64(time.Millisecond)))
+	timestampUniform := gl.GetUniformLocation(program, gl.Str("fTimestamp"+NullTerminator))
+	gl.Uniform1f(timestampUniform, float32(RenderTime.UnixNano()/int64(time.Millisecond)))
 
 	timeUniform := gl.GetUniformLocation(program, gl.Str("fTime"+NullTerminator))
-	gl.Uniform1f(timeUniform, float32(RenderTime.UnixNano()/int64(time.Millisecond)))
+	gl.Uniform1f(timeUniform, float32((RenderTime.UnixNano() - BeginTime.UnixNano())/int64(time.Millisecond)))
 
 	dateUniform := gl.GetUniformLocation(program, gl.Str("iDate"+NullTerminator))
 	timeInSeconds := int32(RenderTime.Hour()*int(time.Hour) + RenderTime.Minute()*int(time.Minute) + RenderTime.Second())
@@ -425,7 +425,7 @@ uniform ivec2 iResolution;
 uniform int iStep;
 uniform float fTime;
 uniform float fTimeDelta;
-uniform float fBeginning;
+uniform float fTimestamp;
 uniform ivec4 iMouse;
 uniform ivec4 iDate;
 
