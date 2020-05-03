@@ -1,6 +1,6 @@
 # Shader Viewer
 
-![](example.png)
+<img src="example.png" width="320" />
 
 This software compiles OpenGL fragment shader and displays it in a window. Program will recompile the shader automatically whenever shared source file changes. ⚙
 
