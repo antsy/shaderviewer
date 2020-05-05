@@ -362,7 +362,7 @@ func getMonitor() *glfw.Monitor {
 		}
 	}
 
-	log.Println(fmt.Sprintf(`Using monitor "%s""`, monitor.GetName()))
+	log.Println(fmt.Sprintf(`Using monitor '%s'`, monitor.GetName()))
 	videoMode := monitor.GetVideoMode()
 	monitorWidth := videoMode.Width
 	monitorHeight := videoMode.Height
