@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
-)
+	)
 
 var (
 	// Versioning
@@ -25,16 +25,16 @@ var (
 
 	// CLI parameters
 	ResetOnChange      bool
-	WaitTime           int
 	Width              int    // Can change if window resizes
 	Height             int    // Can change if window resizes
 	FragmentShaderFile string // Path to the shader file
 	UseFullScreen      bool
 	MonitorIndex       int
+	FrameRate          int // Target frame rate
 
 	// Used by uniforms
 	BeginTime       time.Time
-	RenderTime      time.Time
+	RenderTime      time.Time // Time when drawing event occurs
 	StepNumber      int32
 	MouseX          int
 	MouseY          int
@@ -73,14 +73,28 @@ func main() {
 	// First time compile shader
 	program := compileProgram(getVertexShader(), fragmentShaderSource)
 
+	fps := time.Duration(float64(time.Second) / float64(FrameRate))
+	log.Println(fmt.Sprintf("Running at %dfps (~%d ms per frame)", FrameRate, fps / time.Millisecond))
 	vertexObjectArray := constructVertexObjectArray()
+	fpsWarningThrottle := time.Now()
+	showWarnings := isFlagPassed("fps") // Display frame skipping warnings only if 'fps' has been set by user
+
 	for !window.ShouldClose() {
 		select {
 		case fragmentShaderSource, _ := <-ProgramChannel:
 			log.Println("New shader program received")
 			program = compileProgram(getVertexShader(), fragmentShaderSource)
 		default:
-			draw(vertexObjectArray, window, program)
+			frameTime := draw(vertexObjectArray, window, program)
+
+			sleepingTime := fps - frameTime
+			if showWarnings && sleepingTime < 0 {
+				if time.Since(fpsWarningThrottle) > (time.Second * 5) {
+					log.Println("Warning, can't keep up with fps requirement!")
+					fpsWarningThrottle = time.Now()
+				}
+			}
+			time.Sleep(sleepingTime)
 		}
 	}
 }
@@ -90,18 +104,16 @@ func main() {
  */
 func initHelpAndGlobals() {
 	flag.IntVar(&Width, "x", 640,
-		"Width of the output window")
+		"Width of the output window.")
 	flag.IntVar(&Height, "y", 400,
-		"Height of the output window")
+		"Height of the output window.")
 	flag.StringVar(&FragmentShaderFile, "f", "default.frag",
-		"Source file for fragment shader")
+		"Source file for fragment shader.")
 	flag.BoolVar(&ResetOnChange, "r", false,
-		"Reset the timer (iStep and fTime) values whenever shader is recompiled")
-	flag.IntVar(&WaitTime, "w", 0,
-		"Apply X milliseconds of sleeping time between each rendering")
+		"Reset the timer (iStep and fTime) values whenever shader is recompiled.")
 	var generateTemplate bool
 	flag.BoolVar(&generateTemplate, "generate", false,
-		"Instead of running, generate empty template fragment shader file")
+		"Instead of running, generate empty template fragment shader file.")
 	flag.BoolVar(&UseFullScreen, "f11", false,
 		`Use full screen mode instead of window. Uses system primary monitor.
 Uses monitor's own resolution if the 'x' and 'y' -parameters are not specified.`)
@@ -109,7 +121,9 @@ Uses monitor's own resolution if the 'x' and 'y' -parameters are not specified.`
 		"Instead of system primary monitor, try to use monitor by index value [0...N].")
 	var listMonitors bool
 	flag.BoolVar(&listMonitors, "monitors", false,
-		"Instead of running, display list of monitors available")
+		"Instead of running, display list of monitors available.")
+	flag.IntVar(&FrameRate, "fps", 60,
+		"Target frame rate. Warnings will be displayed if rendering can't match the specified rate.")
 
 	currentExecutableName := filepath.Base(os.Args[0])
 	helpText := fmt.Sprintf(`Usage: %s [OPTION]...
@@ -163,31 +177,38 @@ OPTION(s):
 /**
  * Bind the input values and draw the shader to the window
  */
-func draw(vertexObjectArray uint32, window *glfw.Window, program uint32) {
-	deltaTime := float32(time.Since(RenderTime)) // some loss of precision here
+func draw(vertexObjectArray uint32, window *glfw.Window, program uint32) time.Duration {
+	deltaTime := time.Since(RenderTime)
 	RenderTime = time.Now()
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 	gl.UseProgram(program)
 
+	// vec2 - of width and height of the screen
 	resolutionUniform := gl.GetUniformLocation(program, gl.Str("iResolution"+NullTerminator))
 	gl.Uniform2i(resolutionUniform, int32(Width), int32(Height))
 
+	// int - Count how many total frames have been rendered
 	stepUniform := gl.GetUniformLocation(program, gl.Str("iStep"+NullTerminator))
 	gl.Uniform1i(stepUniform, StepNumber)
 
+	// float - time since last rendered frame
 	deltaTimeUniform := gl.GetUniformLocation(program, gl.Str("fTimeDelta"+NullTerminator))
-	gl.Uniform1f(deltaTimeUniform, deltaTime)
+	gl.Uniform1f(deltaTimeUniform, float32(deltaTime)) // some loss of precision here
 
+	// float - current system time stamp in milliseconds
 	timestampUniform := gl.GetUniformLocation(program, gl.Str("fTimestamp"+NullTerminator))
 	gl.Uniform1f(timestampUniform, float32(RenderTime.UnixNano()/int64(time.Millisecond)))
 
+	// float - time since shader execution began in milliseconds
 	timeUniform := gl.GetUniformLocation(program, gl.Str("fTime"+NullTerminator))
 	gl.Uniform1f(timeUniform, float32((RenderTime.UnixNano()-BeginTime.UnixNano())/int64(time.Millisecond)))
 
+	// vec4 - date information
 	dateUniform := gl.GetUniformLocation(program, gl.Str("iDate"+NullTerminator))
 	timeInSeconds := int32(RenderTime.Hour()*int(time.Hour) + RenderTime.Minute()*int(time.Minute) + RenderTime.Second())
 	gl.Uniform4i(dateUniform, int32(RenderTime.Year()), int32(RenderTime.Month()), int32(RenderTime.Day()), timeInSeconds)
 
+	// vec4 - mouse x coordinate, mouse y coordinate, mouse button 1 pressed, mouse button 2 pressed
 	mouseStateUniform := gl.GetUniformLocation(program, gl.Str("iMouse"+NullTerminator))
 	gl.Uniform4i(mouseStateUniform, int32(MouseX), int32(MouseY), int32(MouseLeftClick), int32(MouseRightClick))
 
@@ -197,9 +218,8 @@ func draw(vertexObjectArray uint32, window *glfw.Window, program uint32) {
 	glfw.PollEvents()
 	window.SwapBuffers()
 	StepNumber++
-	if WaitTime > 0 {
-		time.Sleep(time.Duration(WaitTime) * time.Millisecond)
-	}
+
+	return time.Since(RenderTime)
 }
 
 /**
@@ -401,6 +421,7 @@ func initFileWatcher(filePath string) {
 				}
 				log.Println("File watcher error:", err)
 			}
+			time.Sleep(100 * time.Millisecond) // 0.1 seconds is time everyone can wait
 		}
 	}()
 

@@ -10,7 +10,7 @@ void main() {
 	float r = 1.0 / float(iResolution.y) * gl_FragCoord.y;
 	float b = 1.0 / float(iResolution.x) * gl_FragCoord.x;
 	// Color shift so we detect the steps
-	float g = 1.0 / (iStep * 0.001);
+	float g = 1.0 / (iStep * 0.1);
 
 	// Calculate distance to the mouse cursor
 	float md = distance(iMouse.xy, gl_FragCoord.xy);
