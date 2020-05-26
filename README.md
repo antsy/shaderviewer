@@ -24,6 +24,8 @@ Then run `make compile` to compile binary.
 
 ### Linux
 
+If you are using `apt` you can do `apt-get install libglfw3-dev` to get GLFW.
+
 TODO. 👨‍💻
 
 
